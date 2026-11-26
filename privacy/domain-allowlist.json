@@ -7,10 +7,12 @@
     "0.0.0.0",
     "example.com",
     "api.example.com",
-    "workspace.local"
+    "workspace.local",
+    "s3"
   ],
   "ignoredHostSuffixes": [
     ".example",
+    ".example.com",
     ".test",
     ".local",
     ".invalid"
@@ -21,6 +23,9 @@
     "studio/src/motion/brandStoryDates.json",
     "studio/src/motion/model-hubs/gemini-4/videos.json",
     "studio/src/motion/githubRepositorySnapshot.json",
+    "studio/src/motion/game/community/more-games.json",
+    "studio/src/motion/game/gameCatalog.ts",
+    "desktop/config/stable.payload.json",
     "web/catalog/covers.json",
     "web/catalog/hyperframes.json",
     "web/catalog/metadata.json",
@@ -43,9 +48,14 @@
       ]
     },
     "optional_opendesign_account": {
-      "description": "Optional OpenDesign account sign-in / pricing links (never prefetched automatically; user-initiated only; stripped of attribution params).",
+      "description": "Optional OpenDesign account sign-in, console, pricing and API links (never prefetched automatically; user-initiated only; stripped of attribution params).",
       "domains": [
         "amr-api.open-design.ai",
+        "amr-link.open-design.ai",
+        "accounts.open-design.ai",
+        "api.open-design.ai",
+        "motion.open-design.ai",
+        "www.open-design.ai",
         "open-design.ai"
       ]
     },
@@ -113,6 +123,8 @@
         "studio/src/motion/skillCatalog.ts",
         "studio/src/motion/exploreModelStories.ts",
         "studio/src/motion/CommunityLink.tsx",
+        "studio/src/motion/ExploreStudios.tsx",
+        "studio/src/motion/model-hubs/",
         "studio/src/components/renders/FfmpegRequiredNotice.tsx",
         "studio/src/hooks/useMountEffect.ts"
       ],
@@ -133,7 +145,29 @@
         "discord.com",
         "applink.feishu.cn",
         "ffmpeg.org",
-        "react.dev"
+        "react.dev",
+        "x.com",
+        "www.youtube.com"
+      ]
+    },
+    "desktop_shell_environment": {
+      "description": "Desktop shell environment switching and window policy links to OpenDesign test/preview environments.",
+      "filePrefixes": [
+        "desktop/"
+      ],
+      "domains": [
+        "test.open-design.ai",
+        "pr-482.test.open-design.ai"
+      ]
+    },
+    "desktop_release_scripts": {
+      "description": "Internal desktop release notification and mirror lookup endpoints, restricted to maintainer scripts.",
+      "filePrefixes": [
+        "desktop/scripts/"
+      ],
+      "domains": [
+        "mirror.inner.nexu.space",
+        "ops.inner.nexu.space"
       ]
     },
     "repository_and_packaging_links": {

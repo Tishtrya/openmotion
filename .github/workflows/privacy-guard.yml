@@ -31,6 +31,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '26.11.1'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Run fail-closed privacy audit
         run: node privacy/audit-privacy.mjs
@@ -39,6 +41,9 @@ jobs:
         run: |
           node privacy/strip-telemetry.mjs --dry-run --json > /tmp/strip-dry-run.json
           node -e "const r = JSON.parse(require('node:fs').readFileSync('/tmp/strip-dry-run.json','utf8')); if (!r.ok || r.counts.updated !== 0 || r.counts.removed !== 0) { console.error(r); process.exit(1); }"
+
+      - name: Install locked dependencies for runtime verification
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Run privacy runtime verification tests
         run: node --experimental-strip-types --test privacy/verify-privacy.test.mjs

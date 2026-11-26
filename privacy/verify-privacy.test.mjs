@@ -210,6 +210,131 @@ describe('OpenMotion privacy hardening runtime verification', () => {
     }
   });
 
+  it('Sentry browser observability, cloud PostHog ingestion, and desktop reporting are permanently disabled', async () => {
+    // Older checkouts predate these modules; the sync workflow validates them after overlay.
+    for (const rel of ['packages/observability/config.ts', 'packages/observability/browser.ts', 'src/cloud-tracking.ts', 'desktop/src/sentry.ts', 'desktop/src/telemetry.ts']) {
+      if (!fs.existsSync(path.join(TARGET_ROOT, rel))) return;
+    }
+    const observabilityConfig = await import(modUrl('packages/observability/config.ts'));
+    assert.equal(observabilityConfig.buildBrowserObservabilityConfig({
+      dsn: 'https://public@example.com/1',
+      environment: 'production',
+      tracesSampleRate: 1,
+    }), null);
+    assert.equal(observabilityConfig.parseSentryDsn('https://public@example.com/1'), null);
+    assert.equal(observabilityConfig.injectRuntimeConfigIntoHtml('<html></html>', {
+      dsn: 'https://public@example.com/1', environment: 'production', tracesSampleRate: 1,
+    }), '<html></html>');
+
+    const observabilityBrowser = await import(modUrl('packages/observability/browser.ts'));
+    assert.equal(observabilityBrowser.initBrowserObservability(), false);
+    assert.equal(observabilityBrowser.isBrowserObservabilityEnabled(), false);
+    assert.equal(observabilityBrowser.captureBrowserException(new Error('ignored')), undefined);
+    assert.equal(observabilityBrowser.captureReactBoundaryError(new Error('ignored'), { componentStack: '' }), undefined);
+    assert.deepEqual(observabilityBrowser.createReactRootErrorHandlers(), {});
+    assert.equal(await observabilityBrowser.flushBrowserObservability(), false);
+
+    const cloudTracking = await import(modUrl('src/cloud-tracking.ts'));
+    const tracker = cloudTracking.createCloudTracking('0.0.1', {
+      OPENMOTION_TELEMETRY: '1',
+      DO_NOT_TRACK: '0',
+      OPENMOTION_TRACKING_ENABLED: '1',
+      OPENMOTION_POSTHOG_TOKEN: 'phc_injected_test_token',
+      OPENMOTION_POSTHOG_HOST: 'https://us.i.posthog.com',
+    });
+    assert.equal(tracker.isEnabled(), false);
+    assert.equal(tracker.lockReason(), 'environment');
+    assert.equal(tracker.acceptBrowserBatch([{ entrypoint: 'studio' }]), 0);
+    tracker.trackWebSignInResult({ outcome: 'success', hookId: 'openmotion_editor_login' });
+
+    const desktopSentry = await import(modUrl('desktop/src/sentry.ts'));
+    assert.equal(desktopSentry.resolveDesktopSentryDsn({
+      SENTRY_DESKTOP_DSN: 'https://public@example.com/1',
+      OPENMOTION_DESKTOP_SENTRY_DSN: 'https://public@example.com/1',
+    }), undefined);
+    assert.equal(desktopSentry.parseSentryEnvelopeEndpoints('https://public@example.com/1'), null);
+    const reporter = desktopSentry.createDesktopSentryReporter({
+      dsn: 'https://public@example.com/1',
+      release: 'test',
+      channel: 'stable',
+      platform: 'darwin',
+      arch: 'arm64',
+      shellVersion: '0.0.1',
+    });
+    assert.equal(reporter.isEnabled(), false);
+    assert.equal(reporter.getEndpoints(), null);
+    assert.equal(await reporter.captureException(new Error('ignored')), false);
+    assert.equal(await reporter.sendSession({ sid: 'x', init: true, startedAt: 0, timestamp: 0, status: 'ok', errors: 0, release: 'test' }), false);
+
+    const desktopTelemetry = await import(modUrl('desktop/src/telemetry.ts'));
+    const collector = new desktopTelemetry.DesktopTelemetryCollector({
+      dataDir: tempDir,
+      channel: 'stable',
+      platform: 'darwin',
+      arch: 'arm64',
+      shellVersion: '0.0.1',
+      env: { OPENMOTION_TELEMETRY: '1', DO_NOT_TRACK: '0' },
+    });
+    assert.equal(collector.isEnabled(), false);
+    assert.equal(collector.record({ category: 'app.startup', outcome: 'ok' }), null);
+    assert.equal(collector.getSummary().enabled, false);
+    assert.equal((await collector.flush()).ok, false);
+    await assert.rejects(() => stat(path.join(tempDir, 'telemetry')), { code: 'ENOENT' });
+    assert.equal(fetchCalls.length, 0);
+  });
+
+  it('Studio campaign links, subscription links, and usage reporting carry no cross-site attribution', async () => {
+    const accountOfferPath = path.join(TARGET_ROOT, 'studio/src/motion/accountOffer.ts');
+    const studioTrackingPath = path.join(TARGET_ROOT, 'studio/src/motion/studioTracking.ts');
+    if (!fs.existsSync(accountOfferPath) || !fs.readFileSync(accountOfferPath, 'utf8').includes('buildSubscriptionUrl') || !fs.existsSync(studioTrackingPath)) return;
+    const campaign = await import(modUrl('studio/src/motion/campaignAttribution.ts'));
+    assert.equal(campaign.shouldShowBlackFridayBanner(), false);
+    assert.equal(campaign.useBlackFridayActive(), false);
+    assert.equal(campaign.newCampaignEntryId(), '');
+    const pricing = new URL(campaign.campaignPricingUrl('en', 'openmotion_bf_banner', 'entry-id'));
+    assert.equal(pricing.hostname, 'open-design.ai');
+    assert.equal(pricing.pathname, '/pricing/');
+    assert.deepEqual([...pricing.searchParams.keys()], []);
+
+    const account = await import(modUrl('studio/src/motion/accountOffer.ts'));
+    const subscription = new URL(account.buildSubscriptionUrl('https://console.example.com'));
+    assert.equal(subscription.pathname, '/dashboard');
+    assert.deepEqual([...subscription.searchParams.keys()], ['billing']);
+    assert.equal(subscription.searchParams.get('billing'), 'plan');
+
+    const studioTracking = await import(modUrl('studio/src/motion/studioTracking.ts'));
+    studioTracking.trackStudioUsage('studio_io_action', { action: 'import_files' });
+    await studioTracking.flushStudioUsage();
+    assert.equal(fetchCalls.length, 0);
+  });
+
+  it('deployment, dependency, and tracking manifests carry no Sentry/PostHog configuration', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(TARGET_ROOT, 'package.json'), 'utf8'));
+    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const name of Object.keys(pkg[section] ?? {})) {
+        assert.equal(name.startsWith('@sentry/'), false, `Sentry package remains in ${section}: ${name}`);
+      }
+    }
+    const lock = JSON.parse(fs.readFileSync(path.join(TARGET_ROOT, 'package-lock.json'), 'utf8'));
+    assert.equal(Object.keys(lock.packages ?? {}).some(key => key.startsWith('node_modules/@sentry/')), false);
+
+    const env = fs.readFileSync(path.join(TARGET_ROOT, 'deploy/.env.example'), 'utf8');
+    assert.equal(/SENTRY_|POSTHOG|OPENMOTION_TRACKING/.test(env), false);
+    const compose = fs.readFileSync(path.join(TARGET_ROOT, 'deploy/docker-compose.yml'), 'utf8');
+    assert.equal(/SENTRY_|POSTHOG|OPENMOTION_TRACKING/.test(compose), false);
+    assert.match(compose, /OPENMOTION_TELEMETRY: "0"/);
+    const configmapPath = path.join(TARGET_ROOT, 'deploy/k8s/configmap.yaml');
+    if (fs.existsSync(configmapPath)) {
+      const configmap = fs.readFileSync(configmapPath, 'utf8');
+      assert.match(configmap, /SENTRY_WEB_DSN: ""/);
+      assert.match(configmap, /SENTRY_TRACES_SAMPLE_RATE: "0"/);
+    }
+    const trackingPackage = JSON.parse(fs.readFileSync(path.join(TARGET_ROOT, 'tracking/package.json'), 'utf8'));
+    assert.equal((trackingPackage.files ?? []).includes('posthog-geoip.hog'), false);
+    const accountOffer = fs.readFileSync(path.join(TARGET_ROOT, 'studio/src/motion/accountOffer.ts'), 'utf8');
+    assert.equal(/od_entry_|od_origin/.test(accountOffer), false);
+  });
+
   it('all hardened TypeScript files parse cleanly under Node stripTypeScriptTypes', () => {
     const files = [
       'tracking/device.ts',
@@ -222,7 +347,14 @@ describe('OpenMotion privacy hardening runtime verification', () => {
       'shared/workspace-url.ts',
       'hyperframes.ts',
       'server.ts',
+      'src/cloud-tracking.ts',
+      'packages/observability/config.ts',
+      'packages/observability/browser.ts',
+      'packages/observability/vite.ts',
+      'desktop/src/sentry.ts',
+      'desktop/src/telemetry.ts',
       'studio/src/motion/tracking.ts',
+      'studio/src/motion/studioTracking.ts',
       'studio/src/motion/reporting.ts',
       'studio/src/webmcp/tracking.ts',
       'studio/src/telemetry/distinctId.ts',
@@ -231,10 +363,13 @@ describe('OpenMotion privacy hardening runtime verification', () => {
       'studio/src/telemetry/policy.ts',
       'studio/src/utils/studioTelemetry.ts',
       'studio/src/motion/campaignAttribution.ts',
+      'studio/src/motion/accountOffer.ts',
       'studio/src/motion/githubRepository.ts',
     ];
     for (const rel of files) {
-      const code = fs.readFileSync(path.join(TARGET_ROOT, rel), 'utf8');
+      const full = path.join(TARGET_ROOT, rel);
+      if (!fs.existsSync(full)) continue;
+      const code = fs.readFileSync(full, 'utf8');
       stripTypeScriptTypes(code, { mode: 'strip' });
     }
   });

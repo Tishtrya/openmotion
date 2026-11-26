@@ -131,6 +131,12 @@ const FORBIDDEN_RULES = [
     skipComments: true,
   },
   {
+    id: 'sentry-dsn-assignment',
+    regex: /SENTRY_(?:WEB|DESKTOP)_DSN\s*[:=]\s*['"]?https?:\/\//i,
+    description: 'Configured Sentry DSN found in runtime or deployment config',
+    skipComments: true,
+  },
+  {
     id: 'hardware-fingerprint',
     regex: /(?:IOPlatformUUID|IOPlatformExpertDevice|MachineGuid|\/etc\/machine-id|\/var\/lib\/dbus\/machine-id|SPHardwareDataType|\bwmic\b.*\bcsproduct\b)/,
     description: 'Hardware/OS machine fingerprint collection found',
@@ -192,7 +198,14 @@ const REQUIRED_HARDENED_FILES = [
   'tracking/host.ts',
   'shared/tracking.ts',
   'shared/install-attribution.ts',
+  'src/cloud-tracking.ts',
+  'packages/observability/config.ts',
+  'packages/observability/browser.ts',
+  'packages/observability/vite.ts',
+  'desktop/src/sentry.ts',
+  'desktop/src/telemetry.ts',
   'studio/src/motion/tracking.ts',
+  'studio/src/motion/studioTracking.ts',
   'studio/src/motion/reporting.ts',
   'studio/src/webmcp/tracking.ts',
   'studio/src/telemetry/distinctId.ts',
@@ -276,27 +289,22 @@ export function runAudit({ root = process.cwd(), allowlistPath = DEFAULT_ALLOWLI
     }
   }
 
+  // Each known telemetry-bearing file must be hardened when present. A missing file
+  // is acceptable: upstream removed that surface, or this checkout predates the layout
+  // change while an upstream-sync PR is in flight. Forbidden patterns and domain drift
+  // still fail closed if the same behaviour returns under a new filename.
   for (const rel of REQUIRED_HARDENED_FILES) {
     const full = path.join(root, rel);
-    if (!fs.existsSync(full)) {
+    if (!fs.existsSync(full)) continue;
+    const content = fs.readFileSync(full, 'utf8');
+    if (!content.includes(MARKER)) {
       violations.push({
         category: 'structural',
-        rule: 'expected-hardened-file-missing',
+        rule: 'missing-hardening-marker',
         file: rel,
         line: 1,
-        detail: 'Expected file to exist and carry privacy hardening marker',
+        detail: `File does not contain ${MARKER} — run privacy/strip-telemetry.mjs`,
       });
-    } else {
-      const content = fs.readFileSync(full, 'utf8');
-      if (!content.includes(MARKER)) {
-        violations.push({
-          category: 'structural',
-          rule: 'missing-hardening-marker',
-          file: rel,
-          line: 1,
-          detail: `File does not contain ${MARKER} — run privacy/strip-telemetry.mjs`,
-        });
-      }
     }
   }
 

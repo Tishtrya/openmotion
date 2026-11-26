@@ -4,26 +4,37 @@ This directory maintains the automated telemetry-removal scripts, fail-closed pr
 
 ## What Is Removed / Disabled
 
-1. **PostHog product telemetry & GeoIP** (`shared/tracking-config.json`, `shared/tracking.ts`, `tracking/node.ts`, `tracking/browser.ts`, `tracking/posthog-geoip.hog`, `studio/src/motion/tracking.ts`, `studio/src/motion/reporting.ts`, `studio/src/webmcp/tracking.ts`):
+1. **PostHog product telemetry & GeoIP** (`shared/tracking-config.json`, `shared/tracking.ts`, `tracking/node.ts`, `tracking/browser.ts`, `tracking/posthog-geoip.hog`, `src/cloud-tracking.ts`, `studio/src/motion/tracking.ts`, `studio/src/motion/studioTracking.ts`, `studio/src/motion/reporting.ts`, `studio/src/webmcp/tracking.ts`):
    - Removes the hardcoded PostHog endpoint (`https://us.i.posthog.com`), project token, and `geoip: true` flag.
-   - Permanently locks telemetry off regardless of `OPENMOTION_POSTHOG_HOST`, `OPENMOTION_POSTHOG_KEY`, or preference files.
+   - Permanently locks application, cloud-ingest, and browser telemetry off regardless of `OPENMOTION_POSTHOG_HOST`, `OPENMOTION_POSTHOG_KEY`, `OPENMOTION_TRACKING_ENABLED`, or preference files.
    - Stops writing `tracking/identity.json`, `tracking/preferences.json`, and `tracking/tasks.json` to the user data directory.
-2. **Hardware / OS device fingerprinting** (`tracking/device.ts`, `.github/workflows/device-identity-check.yml`):
+2. **Sentry error/performance reporting** (`packages/observability/*`, `src/entrypoints/api.ts` runtime injection, `desktop/src/sentry.ts`, release workflows):
+   - Replaces the browser Sentry SDK integration with zero-network no-ops and refuses every DSN.
+   - Removes Sentry DSN injection, sourcemap/debug-id build tooling, sourcemap upload steps, and `@sentry/*` dependencies.
+   - Disables the Electron main-process Sentry envelope reporter, crash upload, and store-and-forward outbox.
+3. **Desktop edge-health telemetry** (`desktop/src/telemetry.ts`, `shared/desktop-telemetry.ts`):
+   - Disables local `telemetry/health-metrics.json` collection and persistence and the optional remote flush.
+4. **Hardware / OS device fingerprinting** (`tracking/device.ts`, `.github/workflows/device-identity-check.yml`):
    - Removes execution of macOS `/usr/sbin/ioreg` (`IOPlatformUUID`), Windows `reg.exe` (`MachineGuid`), and Linux `/etc/machine-id` / `/var/lib/dbus/machine-id`, plus HMAC hashing.
-3. **Install & cross-site attribution** (`shared/install-attribution.ts`, `workers/install-guide/index.ts`, `tracking/host.ts`, `shared/workspace-url.ts`, `studio/src/motion/campaignAttribution.ts`):
+5. **Install & cross-site attribution** (`shared/install-attribution.ts`, `workers/install-guide/index.ts`, `tracking/host.ts`, `shared/workspace-url.ts`, `studio/src/motion/campaignAttribution.ts`, `studio/src/motion/accountOffer.ts`):
    - Disables `--utm-source` install attribution and event reporting.
    - Stops injecting and propagating `tracking_context` query parameters in preview URLs.
-   - Disables the Black Friday promotional banner and strips `od_origin`, `od_entry_source`, `od_entry_id`, `od_entry_at`, and `utm_*` parameters from Pricing links.
-4. **Browser anonymous IDs & external feedback prompts** (`studio/src/telemetry/*`, `studio/src/utils/studioTelemetry.ts`, `studio/src/components/feedback/StudioFeedbackCard.tsx`):
+   - Disables the Black Friday promotional banner and strips `od_origin`, `od_entry_source`, `od_entry_id`, `od_entry_at`, and `utm_*` parameters from Pricing and subscription links.
+6. **Browser anonymous IDs & external feedback prompts** (`studio/src/telemetry/*`, `studio/src/utils/studioTelemetry.ts`, `studio/src/components/feedback/StudioFeedbackCard.tsx`):
    - Eliminates `localStorage` persistence of `hyperframes-studio:anonymousId` / `hf-studio-anon-id` and `window.__HF_CLI_DISTINCT_ID` adoption.
    - Disables the feedback prompt card and its Google Calendar interview booking link.
-5. **Unsolicited background network requests** (`studio/src/motion/githubRepository.ts`, `server.ts`, `hyperframes.ts`, `deploy/*`):
+7. **Unsolicited background network requests** (`studio/src/motion/githubRepository.ts`, `server.ts`, `hyperframes.ts`, `deploy/*`):
    - Disables automatic background `https://api.github.com/repos/nexu-io/openmotion` Stars fetches.
-   - Disables automatic startup `gateway.account.prefetch()` (which silently installs `@powerformer/vela-cli` from npm on startup; explicit user sign-in still prepares it on demand).
+   - Disables automatic startup `gateway.account.prefetch()` when that API exists (explicit user sign-in still prepares it on demand).
    - Adds `HYPERFRAMES_NO_UPDATE_CHECK=1` and `HYPERFRAMES_NO_AUTO_INSTALL=1` alongside `HYPERFRAMES_NO_TELEMETRY=1` in `hyperframes.ts` and Docker defaults.
-6. **Preserved local & user-initiated features**:
+8. **Deployment and dependency hardening** (`.env.example`, `docker-compose.yml`, Kubernetes config, `package.json`, `package-lock.json`):
+   - Removes Sentry/PostHog environment settings and forces `OPENMOTION_TELEMETRY=0` / `DO_NOT_TRACK=1`.
+   - Removes `@sentry/*` packages from manifests and the lockfile; `npm ci` remains reproducible.
+9. **Preserved local & user-initiated features**:
    - Local diagnostic ZIP export (`DiagnosticExport` — local only, never uploaded).
    - User-configured BYOK media providers, MCP tools, Studio editing/rendering, and template libraries.
+
+The scripts are **layout-aware**: known telemetry files are hardened whenever present, while files added or removed by upstream restructuring do not break the guard on an older checkout. Forbidden endpoints, unknown domains, and analytics dependencies still fail closed when the same behavior returns under a new filename.
 
 ## Usage
 
@@ -34,7 +45,9 @@ node privacy/strip-telemetry.mjs
 # 2. Run the fail-closed privacy audit (forbidden patterns + domain allowlist drift + npm deps)
 node privacy/audit-privacy.mjs
 
-# 3. Run runtime verification tests (intercepts global fetch, verifies zero network & disk writes)
+# 3. Install locked dependencies once, then run runtime verification tests
+#    (intercepts global fetch, verifies zero network & disk writes)
+npm ci --ignore-scripts --no-audit --no-fund
 node --experimental-strip-types --test privacy/verify-privacy.test.mjs
 ```
 
