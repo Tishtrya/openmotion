@@ -109,14 +109,13 @@ jobs:
       - name: Open or update privacy alert issue on strip/audit failure
         if: steps.strip.outcome != 'success' || steps.audit.outcome != 'success'
         uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.PRIVACY_SYNC_TOKEN }}
         env:
           UPSTREAM_SHA: ${{ steps.fetch.outputs.upstream_sha }}
           UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
           STRIP_OUTCOME: ${{ steps.strip.outcome }}
           AUDIT_OUTCOME: ${{ steps.audit.outcome }}
         with:
+          github-token: ${{ secrets.PRIVACY_SYNC_TOKEN }}
           script: |
             const fs = require('node:fs');
             const upstreamSha = process.env.UPSTREAM_SHA;
@@ -269,11 +268,10 @@ jobs:
       - name: Close resolved privacy alert issue
         if: success() && steps.strip.outcome == 'success' && steps.audit.outcome == 'success'
         uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.PRIVACY_SYNC_TOKEN }}
         env:
           UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
         with:
+          github-token: ${{ secrets.PRIVACY_SYNC_TOKEN }}
           script: |
             const marker = '[Privacy Alert] Upstream sync blocked';
             const existing = await github.rest.issues.listForRepo({
