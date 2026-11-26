@@ -58,6 +58,30 @@ Two workflows govern ongoing sync with `https://github.com/nexu-io/openmotion`:
 - [`.github/workflows/sync-upstream-privacy.yml`](../.github/workflows/sync-upstream-privacy.yml): Runs daily (and on manual `workflow_dispatch`). Resets a sync branch to the clean upstream tree, overlays `privacy/` and the privacy workflows, replays `privacy/strip-telemetry.mjs`, runs `privacy/audit-privacy.mjs`, installs dependencies, runs `verify-privacy.test.mjs` plus full typecheck/Studio build, and opens/updates a PR into `main`. If upstream introduces a new telemetry SDK, an unapproved external domain, or refactors a stripped file so an anchor drifts, the workflow **fails closed**, opens/updates a `[Privacy Alert]` GitHub Issue, and refuses to push or open a PR.
 - [`.github/workflows/privacy-guard.yml`](../.github/workflows/privacy-guard.yml): Runs on every push and PR to `main` to prevent accidental regressions.
 
+### Required repository configuration
+
+The sync branch contains the upstream tree, which includes changes under `.github/workflows/`. GitHub deliberately blocks the built-in `GITHUB_TOKEN` from creating or updating workflow files, even with `contents: write`; the push fails with:
+
+```text
+refusing to allow a GitHub App to create or update workflow `.github/workflows/ci.yml` without `workflows` permission
+```
+
+Create a repository secret named **`PRIVACY_SYNC_TOKEN`** with a token that has the **Workflows: Read and write** permission. The workflow uses this secret for the final `git push` and for `gh`/issue updates, while keeping it out of the checkout so upstream build scripts cannot read it.
+
+Recommended: a fine-grained personal access token scoped to this repository only, with:
+
+| Permission | Access |
+| --- | --- |
+| Contents | Read and write |
+| Pull requests | Read and write |
+| Issues | Read and write |
+| Workflows | Read and write |
+| Metadata | Read-only (mandatory) |
+
+Add it under **Settings → Secrets and variables → Actions → New repository secret**. Alternatively, create a GitHub App installed on this repository with the same repository permissions and mint a short-lived installation token with `actions/create-github-app-token`, then store that token in `PRIVACY_SYNC_TOKEN`.
+
+If you do not want to grant workflow-update access, the alternative is to keep the fork's own `.github/workflows/` files and exclude upstream workflow changes from the sync branch; this requires changing the sync workflow and means upstream CI changes are not mirrored.
+
 ### Using a Separate Builder Repository
 
 Both `strip-telemetry.mjs` and `audit-privacy.mjs` accept `--root <dir>`, and `verify-privacy.test.mjs` accepts `OPENMOTION_PRIVACY_TEST_ROOT=<dir>`. You can copy `privacy/` into a standalone orchestrator repository that checks out `nexu-io/openmotion` into `./target`, runs these scripts against `--root ./target`, and pushes the verified tree to your fork.

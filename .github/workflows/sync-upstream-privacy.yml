@@ -48,6 +48,9 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          # Keep the workflows-capable token out of the checkout so upstream build
+          # scripts cannot read it. The final push step injects it explicitly.
+          persist-credentials: false
 
       - uses: actions/setup-node@v6
         with:
@@ -106,6 +109,8 @@ jobs:
       - name: Open or update privacy alert issue on strip/audit failure
         if: steps.strip.outcome != 'success' || steps.audit.outcome != 'success'
         uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PRIVACY_SYNC_TOKEN }}
         env:
           UPSTREAM_SHA: ${{ steps.fetch.outputs.upstream_sha }}
           UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
@@ -206,7 +211,8 @@ jobs:
       - name: Commit, push sync branch, and open/update PR
         if: steps.diff.outputs.changed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.create_pr)
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PRIVACY_SYNC_TOKEN }}
+          SYNC_TOKEN: ${{ secrets.PRIVACY_SYNC_TOKEN }}
           UPSTREAM_SHA: ${{ steps.fetch.outputs.upstream_sha }}
           UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
         run: |
@@ -218,6 +224,9 @@ jobs:
             -m "Upstream: ${UPSTREAM_REPO} @ ${UPSTREAM_SHA}" \
             -m "Hardened via privacy/strip-telemetry.mjs and verified via privacy/audit-privacy.mjs."
 
+          # GITHUB_TOKEN lacks the GitHub App "workflows" permission. Use the PAT only
+          # for this push, after all upstream code and build scripts have finished.
+          git remote set-url origin "https://x-access-token:${SYNC_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force-with-lease origin "$SYNC_BRANCH"
 
           node -e '
@@ -260,6 +269,8 @@ jobs:
       - name: Close resolved privacy alert issue
         if: success() && steps.strip.outcome == 'success' && steps.audit.outcome == 'success'
         uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PRIVACY_SYNC_TOKEN }}
         env:
           UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
         with:
