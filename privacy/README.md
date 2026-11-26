@@ -78,7 +78,7 @@ Recommended: a fine-grained personal access token scoped to this repository only
 | Workflows | Read and write |
 | Metadata | Read-only (mandatory) |
 
-Add it under **Settings → Secrets and variables → Actions → New repository secret**. Alternatively, create a GitHub App installed on this repository with the same repository permissions and mint a short-lived installation token with `actions/create-github-app-token`, then store that token in `PRIVACY_SYNC_TOKEN`.
+Add it under **Settings → Secrets and variables → Actions → New repository secret**. Alternatively, create a GitHub App installed on this repository with the same repository permissions and adapt the workflow to mint a short-lived installation token with `actions/create-github-app-token` (use its output for the push and `gh`/issue steps instead of a long-lived secret).
 
 If you do not want to grant workflow-update access, the alternative is to keep the fork's own `.github/workflows/` files and exclude upstream workflow changes from the sync branch; this requires changing the sync workflow and means upstream CI changes are not mirrored.
 
