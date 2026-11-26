@@ -9,15 +9,9 @@ export type Fields<E extends StudioEvent> = EventFields<typeof studioEvents[E]>;
 
 /** Fire and forget: reporting never interrupts browsing, copying or downloading. */
 // The transport is loaded on first use, so modules that only import a reporter (and tests without a browser) never start it.
-type Transport = typeof import('./tracking');
-let transport: Transport | undefined;
-export const loadReportingTransport = () => import('./tracking').then(module => { transport = module; return module; });
-export const send = <E extends StudioEvent>(event: E, properties: Fields<E>) => {
-  try {
-    if (transport) void transport.trackMotion(event, properties).catch(() => {});
-    else void loadReportingTransport().then(({ trackMotion }) => trackMotion(event, properties)).catch(() => {});
-  } catch { /* reporting never interrupts the page */ }
-};
+// OPENMOTION_PRIVACY_HARDENED: Studio reporting transport permanently disabled.
+export const loadReportingTransport = async () => ({});
+export const send = <E extends StudioEvent>(_event: E, _properties: Fields<E>) => {};
 export const newTrackingId = () => crypto.randomUUID();
 /** The settled search-box value as it is reported: trimmed, control characters removed, at most 100 characters. */
 export const searchKeyword = (query: string) => query.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 100).trim();

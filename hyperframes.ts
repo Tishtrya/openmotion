@@ -25,7 +25,7 @@ export function stopCommands() { for (const child of commands) terminate(child);
 
 export function runtimeEnv(): NodeJS.ProcessEnv {
   const captureFix = '--import=' + new URL('./shared/hyperframes-capture-fix.mjs', import.meta.url).href;
-  return { ...process.env, HYPERFRAMES_NO_TELEMETRY: '1', HYPERFRAMES_PREVIEW_HOST: '127.0.0.1',
+  return { ...process.env, HYPERFRAMES_NO_TELEMETRY: '1', HYPERFRAMES_NO_UPDATE_CHECK: '1', HYPERFRAMES_NO_AUTO_INSTALL: '1', HYPERFRAMES_PREVIEW_HOST: '127.0.0.1',
     NODE_OPTIONS: process.env.NODE_OPTIONS?.includes(captureFix) ? process.env.NODE_OPTIONS : [process.env.NODE_OPTIONS, captureFix].filter(Boolean).join(' '),
     // shortcut: pinned Node can hang in Windows compile-cache startup; remove after upstream fix is verified (nodejs/node#66438).
     ...(process.platform === 'win32' ? { NODE_DISABLE_COMPILE_CACHE: '1' } : {}),

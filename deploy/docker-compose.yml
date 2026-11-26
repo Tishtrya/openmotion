@@ -14,7 +14,10 @@ services:
       PORT: ${OPENMOTION_PORT:-4173}
       # Used by Studio's host-side MCP commands to enter this exact container.
       MOTION_CONTAINER_NAME: openmotion
-      DO_NOT_TRACK: ${DO_NOT_TRACK:-}
+      DO_NOT_TRACK: "1"
+      OPENMOTION_TELEMETRY: "0"
+      HYPERFRAMES_NO_TELEMETRY: "1"
+      HYPERFRAMES_NO_UPDATE_CHECK: "1"
     ports:
       # Loopback only. This is what keeps other machines out: the Studio has no
       # sign-in, so do not publish the port on another interface.

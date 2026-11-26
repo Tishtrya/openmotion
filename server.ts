@@ -870,7 +870,7 @@ export async function startServer(store = sharedStore, port = Number(process.env
   const gateway = gatewayFor(store, context.tracking);
   gateway.account.options.track = record => context.tracking?.track('account_sign_in_result', record);
   // `node --test` runs use synthetic connectors; skip the real installation there. Closing the service stops an unfinished one.
-  if (!process.env.NODE_TEST_CONTEXT) gateway.account.prefetch();
+  // OPENMOTION_PRIVACY_HARDENED: account prefetch disabled; connector prepares on demand when user explicitly signs in.
   const tick = () => {
     void renderNext(store, runtimeRoot, context.tracking).catch(error => console.error(error.message));
     void gateway.tick().catch(() => console.error('Model gateway queue could not be processed'));

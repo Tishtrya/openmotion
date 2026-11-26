@@ -3,10 +3,9 @@ type Environment = { RELEASES: { get(key: string): Promise<GuideObject | null> }
 const marker = '<!-- openmotion-utm-source-supported -->';
 const sourcePattern = /^[A-Za-z0-9_.-]{1,64}$/;
 
-export function attributeGuide(text: string, source: string | null): string {
-  if (!source || !sourcePattern.test(source) || !text.includes(marker)) return text;
-  return text.replace(/openmotion setup --host (codex|claude|deepseek|workbuddy)\b/g,
-    command => `${command} --utm-source ${source}`);
+// OPENMOTION_PRIVACY_HARDENED: install guide UTM injection disabled.
+export function attributeGuide(text: string, _source: string | null): string {
+  return text;
 }
 
 export function guideKey(url: URL): string | null {

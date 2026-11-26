@@ -1,0 +1,44 @@
+name: Privacy guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: privacy-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit-and-verify:
+    name: Static audit & runtime verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      OPENMOTION_TELEMETRY: '0'
+      DO_NOT_TRACK: '1'
+      HYPERFRAMES_NO_TELEMETRY: '1'
+      HYPERFRAMES_NO_UPDATE_CHECK: '1'
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.11.1'
+
+      - name: Run fail-closed privacy audit
+        run: node privacy/audit-privacy.mjs
+
+      - name: Verify idempotency (strip dry-run)
+        run: |
+          node privacy/strip-telemetry.mjs --dry-run --json > /tmp/strip-dry-run.json
+          node -e "const r = JSON.parse(require('node:fs').readFileSync('/tmp/strip-dry-run.json','utf8')); if (!r.ok || r.counts.updated !== 0 || r.counts.removed !== 0) { console.error(r); process.exit(1); }"
+
+      - name: Run privacy runtime verification tests
+        run: node --experimental-strip-types --test privacy/verify-privacy.test.mjs

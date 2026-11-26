@@ -1,0 +1,159 @@
+{
+  "$comment": "Explicit runtime external domain allowlist for the OpenMotion privacy fork. Any runtime URL whose host is not listed here (or appears outside its allowed filePrefixes) causes privacy/audit-privacy.mjs to fail closed.",
+  "version": 1,
+  "ignoredHosts": [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "example.com",
+    "api.example.com",
+    "workspace.local"
+  ],
+  "ignoredHostSuffixes": [
+    ".example",
+    ".test",
+    ".local",
+    ".invalid"
+  ],
+  "staticDataFilesExcludedFromDomainDrift": [
+    "shared/provider-presets.json",
+    "shared/black-friday-references.json",
+    "studio/src/motion/brandStoryDates.json",
+    "studio/src/motion/model-hubs/gemini-4/videos.json",
+    "studio/src/motion/githubRepositorySnapshot.json",
+    "web/catalog/covers.json",
+    "web/catalog/hyperframes.json",
+    "web/catalog/metadata.json",
+    "web/catalog/provenance.json",
+    "web/catalog/template-frames.json",
+    "repository-media.json",
+    "packages/design-system/providers/sources.json"
+  ],
+  "allowlist": {
+    "byok_media_providers": {
+      "description": "User-configured BYOK media generation APIs and API key dashboard links.",
+      "domains": [
+        "api.atlascloud.ai",
+        "www.atlascloud.ai",
+        "api.fal.ai",
+        "queue.fal.run",
+        "fal.ai",
+        "api.wavespeed.ai",
+        "wavespeed.ai"
+      ]
+    },
+    "optional_opendesign_account": {
+      "description": "Optional OpenDesign account sign-in / pricing links (never prefetched automatically; user-initiated only; stripped of attribution params).",
+      "domains": [
+        "amr-api.open-design.ai",
+        "open-design.ai"
+      ]
+    },
+    "template_catalog_and_hosted_media": {
+      "description": "Hosted template catalogs, template media assets, and Hyperframes schema/registry references.",
+      "domains": [
+        "releases.open-design.ai",
+        "r.open-design.ai",
+        "r.powerformer.net",
+        "static.heygen.ai",
+        "hyperframes.heygen.com",
+        "storage.googleapis.com"
+      ]
+    },
+    "fonts_and_standards": {
+      "description": "Web font loading, GSAP CDN in template examples, and W3C/JSON-Schema XML/schema URIs.",
+      "domains": [
+        "fonts.googleapis.com",
+        "fonts.gstatic.com",
+        "cdn.jsdelivr.net",
+        "www.w3.org",
+        "json-schema.org"
+      ]
+    },
+    "ssrf_fakeip_dns_guard": {
+      "description": "Public DoH resolver used exclusively when user-initiated Brand Kit capture encounters synthetic 198.18.0.0/15 Fake-IP proxy DNS.",
+      "filePrefixes": [
+        "gateway/brand-network.ts"
+      ],
+      "domains": [
+        "cloudflare-dns.com"
+      ]
+    },
+    "local_agent_doc_links": {
+      "description": "External documentation links displayed in Local Agents / Onboarding UI (passive links, not background requests).",
+      "filePrefixes": [
+        "shared/local-agents.ts",
+        "scripts/export-adapters.ts"
+      ],
+      "domains": [
+        "aider.chat",
+        "ampcode.com",
+        "antigravity.google",
+        "atomcode.atomgit.com",
+        "cli.devin.ai",
+        "code.claude.com",
+        "cursor.com",
+        "hermes-agent.nousresearch.com",
+        "kilo.ai",
+        "kiro.dev",
+        "mimo.ai",
+        "openclaude.gitlawb.com",
+        "opencode.ai",
+        "qoder.com",
+        "www.codebuddy.cn",
+        "www.ibm.com",
+        "www.volcengine.com",
+        "x.ai",
+        "open.workbuddy.cn"
+      ]
+    },
+    "ui_showcase_and_docs_links": {
+      "description": "Passive links and gallery showcase assets in Studio UI.",
+      "filePrefixes": [
+        "studio/src/motion/skillCatalog.ts",
+        "studio/src/motion/exploreModelStories.ts",
+        "studio/src/motion/CommunityLink.tsx",
+        "studio/src/components/renders/FfmpegRequiredNotice.tsx",
+        "studio/src/hooks/useMountEffect.ts"
+      ],
+      "domains": [
+        "a.storyblok.com",
+        "docs.manim.community",
+        "drawcall.github.io",
+        "godotengine.org",
+        "higgsfield.ai",
+        "static.higgsfield.ai",
+        "images.motion.dev",
+        "motion.dev",
+        "lume.io",
+        "threejs.org",
+        "vincentwei1021.github.io",
+        "www.remotion.dev",
+        "www.peppercarrot.com",
+        "discord.com",
+        "applink.feishu.cn",
+        "ffmpeg.org",
+        "react.dev"
+      ]
+    },
+    "repository_and_packaging_links": {
+      "description": "GitHub repository URLs, LFS spec URI, and npm registry references.",
+      "domains": [
+        "github.com",
+        "raw.githubusercontent.com",
+        "git-lfs.github.com",
+        "registry.npmjs.org"
+      ]
+    },
+    "maintainer_scripts_only": {
+      "description": "GitHub API and R2 bucket endpoints restricted strictly to maintainer scripts (forbidden in runtime/Studio code).",
+      "filePrefixes": [
+        "scripts/"
+      ],
+      "domains": [
+        "api.github.com",
+        "64ad4569ffd912432d6b86d5656484c4.r2.cloudflarestorage.com"
+      ]
+    }
+  }
+}

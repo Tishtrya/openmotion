@@ -1,6 +1,10 @@
-import { trackStudioUsage } from '../motion/studioTracking';
+// OPENMOTION_PRIVACY_HARDENED: Studio telemetry client permanently disabled.
 type EventProperties = Record<string, string | number | boolean | undefined>;
 
-// Upstream measurement stays disabled; explicit events use OpenMotion's own policy and transport.
-export function shouldTrack(): boolean { return false; }
-export function trackEvent(event: string, properties: EventProperties = {}): void { trackStudioUsage(event, properties); }
+export function shouldTrack(): boolean {
+  return false;
+}
+
+export function trackEvent(_event: string, _properties: EventProperties = {}): void {
+  // No-op in privacy-hardened build.
+}

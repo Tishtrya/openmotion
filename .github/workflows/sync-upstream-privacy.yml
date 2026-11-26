@@ -1,0 +1,258 @@
+name: Sync upstream & strip telemetry
+
+on:
+  schedule:
+    # Daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_repo:
+        description: 'Upstream repository URL'
+        required: false
+        default: 'https://github.com/nexu-io/openmotion.git'
+      upstream_ref:
+        description: 'Upstream branch or tag to sync from'
+        required: false
+        default: 'main'
+      create_pr:
+        description: 'Open or update a PR targeting main (false runs dry verification only)'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: sync-upstream-privacy
+  cancel-in-progress: false
+
+jobs:
+  sync-and-harden:
+    name: Sync upstream, strip telemetry, audit & build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      UPSTREAM_REPO: ${{ inputs.upstream_repo || 'https://github.com/nexu-io/openmotion.git' }}
+      UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
+      SYNC_BRANCH: sync/upstream-main
+      OPENMOTION_TELEMETRY: '0'
+      DO_NOT_TRACK: '1'
+      HYPERFRAMES_NO_TELEMETRY: '1'
+      HYPERFRAMES_NO_UPDATE_CHECK: '1'
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.11.1'
+          cache: 'npm'
+
+      - name: Snapshot fork privacy overlay & fetch upstream
+        id: fetch
+        run: |
+          set -euo pipefail
+          # Preserve fork-owned privacy scripts and workflows outside the working tree
+          rm -rf /tmp/privacy-overlay
+          mkdir -p /tmp/privacy-overlay/.github/workflows
+          cp -R privacy /tmp/privacy-overlay/privacy
+          cp .github/workflows/sync-upstream-privacy.yml /tmp/privacy-overlay/.github/workflows/
+          cp .github/workflows/privacy-guard.yml /tmp/privacy-overlay/.github/workflows/
+
+          git remote remove upstream 2>/dev/null || true
+          git remote add upstream "$UPSTREAM_REPO"
+          git fetch --no-tags --depth=50 upstream "$UPSTREAM_REF"
+
+          UPSTREAM_SHA="$(git rev-parse FETCH_HEAD)"
+          UPSTREAM_SHORT="$(git rev-parse --short FETCH_HEAD)"
+          git log -1 --format=%s FETCH_HEAD > /tmp/upstream-subject.txt
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "upstream_short=$UPSTREAM_SHORT" >> "$GITHUB_OUTPUT"
+
+          # Reset working tree & index to clean upstream tree on a branch off fork main.
+          # This avoids perpetual merge conflicts while keeping a clean PR history into main.
+          git checkout -B "$SYNC_BRANCH" origin/main
+          git read-tree --reset -u "$UPSTREAM_SHA"
+          git clean -fd
+
+          # Re-apply fork-owned privacy overlay
+          rm -rf privacy
+          cp -R /tmp/privacy-overlay/privacy ./privacy
+          mkdir -p .github/workflows
+          cp /tmp/privacy-overlay/.github/workflows/sync-upstream-privacy.yml .github/workflows/
+          cp /tmp/privacy-overlay/.github/workflows/privacy-guard.yml .github/workflows/
+
+      - name: Strip telemetry & tracking from clean upstream
+        id: strip
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node privacy/strip-telemetry.mjs 2>&1 | tee /tmp/strip-output.txt
+
+      - name: Run fail-closed privacy audit
+        id: audit
+        if: steps.strip.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node privacy/audit-privacy.mjs 2>&1 | tee /tmp/audit-output.txt
+
+      - name: Open or update privacy alert issue on strip/audit failure
+        if: steps.strip.outcome != 'success' || steps.audit.outcome != 'success'
+        uses: actions/github-script@v7
+        env:
+          UPSTREAM_SHA: ${{ steps.fetch.outputs.upstream_sha }}
+          UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
+          STRIP_OUTCOME: ${{ steps.strip.outcome }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const upstreamSha = process.env.UPSTREAM_SHA;
+            const upstreamShort = process.env.UPSTREAM_SHORT;
+            const stripOutcome = process.env.STRIP_OUTCOME;
+            const auditOutcome = process.env.AUDIT_OUTCOME;
+            const stripOut = fs.existsSync('/tmp/strip-output.txt')
+              ? fs.readFileSync('/tmp/strip-output.txt', 'utf8').slice(-4000)
+              : 'N/A';
+            const auditOut = fs.existsSync('/tmp/audit-output.txt')
+              ? fs.readFileSync('/tmp/audit-output.txt', 'utf8').slice(-4000)
+              : 'N/A';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `[Privacy Alert] Upstream sync blocked at ${upstreamShort}`;
+            const body = [
+              `Automated upstream sync from \`${process.env.UPSTREAM_REPO}\` (\`${upstreamSha}\`) was **blocked** by the fail-closed privacy guard.`,
+              '',
+              `- Workflow run: ${runUrl}`,
+              `- Strip step: \`${stripOutcome}\``,
+              `- Audit step: \`${auditOutcome}\``,
+              '',
+              '### Strip output',
+              '```text',
+              stripOut,
+              '```',
+              '',
+              '### Privacy audit output',
+              '```text',
+              auditOut,
+              '```',
+              '',
+              'Update `privacy/strip-telemetry.mjs` or `privacy/domain-allowlist.json` after reviewing the upstream changes.',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 20,
+            });
+            const match = existing.data.find(i => i.title.startsWith('[Privacy Alert] Upstream sync blocked'));
+            if (match) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+      - name: Abort if strip or privacy audit failed
+        if: steps.strip.outcome != 'success' || steps.audit.outcome != 'success'
+        run: |
+          echo "Privacy strip or audit failed; refusing to publish upstream changes."
+          exit 1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run privacy runtime verification tests
+        run: node --experimental-strip-types --test privacy/verify-privacy.test.mjs
+
+      - name: Validate syntax, design system, TypeScript, and Studio build
+        run: |
+          npm run check
+          npm run typecheck:backend
+          npm run typecheck:studio
+          npm run build:tracking
+          npm run build:studio
+
+      - name: Check for changes against main
+        id: diff
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with upstream ${{ steps.fetch.outputs.upstream_short }}."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --cached --stat
+          fi
+
+      - name: Commit, push sync branch, and open/update PR
+        if: steps.diff.outputs.changed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.create_pr)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_SHA: ${{ steps.fetch.outputs.upstream_sha }}
+          UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git commit -m "Sync upstream ${UPSTREAM_SHORT} and strip telemetry" \
+            -m "Upstream: ${UPSTREAM_REPO} @ ${UPSTREAM_SHA}" \
+            -m "Hardened via privacy/strip-telemetry.mjs and verified via privacy/audit-privacy.mjs."
+
+          git push --force-with-lease origin "$SYNC_BRANCH"
+
+          node -e '
+            const fs = require("node:fs");
+            const subject = fs.readFileSync("/tmp/upstream-subject.txt", "utf8").trim();
+            const stripOut = fs.readFileSync("/tmp/strip-output.txt", "utf8").trim();
+            const body = [
+              "## Automated Upstream Sync & Privacy Hardening",
+              "",
+              "- **Upstream**: `" + process.env.UPSTREAM_REPO + "`",
+              "- **Commit**: `" + process.env.UPSTREAM_SHA + "`",
+              "- **Subject**: " + subject,
+              "",
+              "### Verification passed",
+              "- [x] `node privacy/strip-telemetry.mjs`",
+              "- [x] `node privacy/audit-privacy.mjs` (0 violations, 0 unapproved domains)",
+              "- [x] `node --experimental-strip-types --test privacy/verify-privacy.test.mjs`",
+              "- [x] `npm run check`, `typecheck:backend`, `typecheck:studio`, `build:tracking`, `build:studio`",
+              "",
+              "<details>",
+              "<summary>Telemetry strip summary</summary>",
+              "",
+              "```text",
+              stripOut,
+              "```",
+              "",
+              "</details>",
+            ].join("\n");
+            fs.writeFileSync("/tmp/pr-body.md", body + "\n", "utf8");
+          '
+
+          PR_TITLE="Sync upstream (${UPSTREAM_SHORT}) with privacy hardening"
+          EXISTING_PR="$(gh pr list --head "$SYNC_BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body-file /tmp/pr-body.md
+          else
+            gh pr create --base main --head "$SYNC_BRANCH" --title "$PR_TITLE" --body-file /tmp/pr-body.md
+          fi

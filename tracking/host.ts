@@ -32,20 +32,7 @@ export function validHostContext(raw: unknown): raw is HostContext {
     && (host.mcp_client_version === undefined || typeof host.mcp_client_version === 'string' && versions.test(host.mcp_client_version));
 }
 
-/** Attribute a page to its opening link, never the last Agent using a shared backend. */
-export function previewTrackingContext(value: any, origin: string, token: string): any {
-  if (Array.isArray(value)) return value.map(item => previewTrackingContext(item, origin, token));
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => {
-    if (['previewUrl', 'sessionUrl', 'embeddedPreviewUrl', 'url'].includes(key) && typeof child === 'string') {
-      try {
-        const url = new URL(child);
-        if (url.origin === origin && (url.pathname === '/' || url.pathname.startsWith('/sessions/'))) {
-          url.searchParams.set('tracking_context', token); return [key, url.href];
-        }
-      } catch { /* Other handoff values are not URLs. */ }
-    }
-    return [key, ['previewHandoff', 'nextAction', 'codex', 'arguments', 'target'].includes(key)
-      ? previewTrackingContext(child, origin, token) : child];
-  }));
+// OPENMOTION_PRIVACY_HARDENED: tracking_context URL injection removed.
+export function previewTrackingContext(value: any, _origin: string, _token: string): any {
+  return value;
 }

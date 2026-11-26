@@ -1,8 +1,12 @@
-import { trackStudioUsage, flushStudioUsage } from '../motion/studioTracking';
+// OPENMOTION_PRIVACY_HARDENED: Studio legacy telemetry wrapper permanently disabled.
 interface EventProperties {
   [key: string]: string | number | boolean | null | undefined;
 }
 
-// Existing callers share OpenMotion's installation identity, queue and opt-out controls.
-export function trackStudioEvent(event: string, properties: EventProperties = {}): void { trackStudioUsage(event, properties); }
-export function flushViaBeacon(): void { flushStudioUsage(); }
+export function trackStudioEvent(_event: string, _properties: EventProperties = {}): void {
+  // No-op in privacy-hardened build.
+}
+
+export function flushViaBeacon(): void {
+  // No-op in privacy-hardened build.
+}

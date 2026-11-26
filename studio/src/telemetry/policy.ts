@@ -1,5 +1,7 @@
-// Disable upstream measurement and automatic experiment enrolment in every build.
-export function browserTelemetryAllowed(): boolean { return false; }
+// OPENMOTION_PRIVACY_HARDENED: Studio telemetry policy permanently locked off.
+export function browserTelemetryAllowed(): boolean {
+  return false;
+}
 
 declare global {
   interface Window {

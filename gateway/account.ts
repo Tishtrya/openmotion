@@ -460,8 +460,8 @@ export class OpenDesignAccount {
    * carries over. A one-time account intent makes the page confirm it is the account signed in here before any purchase.
    */
   async openSubscription(launch: (url: string) => Promise<void> = openSystemBrowser) {
-    const target = '/dashboard?' + new URLSearchParams({ billing: 'plan', od_origin: 'openmotion', od_entry_source: 'openmotion_manage_subscription',
-      od_entry_id: randomUUID(), od_entry_at: new Date().toISOString() });
+    // OPENMOTION_PRIVACY_HARDENED: subscription link attribution removed.
+    const target = '/dashboard?' + new URLSearchParams({ billing: 'plan' });
     let url = consoleUrl + target;
     const profile = await this.profile();
     if (signedInProfile(profile) && profile!.apiUrl?.replace(/\/$/, '') === productionApi && await this.identity()) {
