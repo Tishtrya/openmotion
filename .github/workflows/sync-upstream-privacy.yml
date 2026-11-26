@@ -256,3 +256,30 @@ jobs:
           else
             gh pr create --base main --head "$SYNC_BRANCH" --title "$PR_TITLE" --body-file /tmp/pr-body.md
           fi
+
+      - name: Close resolved privacy alert issue
+        if: success() && steps.strip.outcome == 'success' && steps.audit.outcome == 'success'
+        uses: actions/github-script@v7
+        env:
+          UPSTREAM_SHORT: ${{ steps.fetch.outputs.upstream_short }}
+        with:
+          script: |
+            const marker = '[Privacy Alert] Upstream sync blocked';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 20,
+            });
+            const resolved = existing.data.filter(issue => issue.title.startsWith(marker));
+            for (const issue of resolved) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+                body: `${issue.body ?? ''}\n\nResolved by a successful privacy strip and audit at upstream \`${process.env.UPSTREAM_SHORT}\`.`,
+              });
+            }
